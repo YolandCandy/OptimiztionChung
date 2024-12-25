@@ -1,0 +1,104 @@
+from ortools.sat.python import cp_model
+
+# Input parsing
+T, N, M = map(int, input().split())
+
+class_courses = []
+for _ in range(N):
+    class_courses.append(list(map(int, input().split()))[:-1])
+
+teacher_courses = []
+for _ in range(T):
+    teacher_courses.append(list(map(int, input().split()))[:-1])
+
+course_durations = list(map(int, input().split()))
+
+def solve_class_course_teacher_assignment():
+    model = cp_model.CpModel()
+
+    # class_course_assignments[i, j, k, l]: lớp-môn i-j được phân cho kíp bắt đầu l và giáo viên k
+    class_course_assignments = {}
+    for i in range(N):
+        for j in class_courses[i]:
+            for k in range(T):
+                if j in teacher_courses[k]:
+                    for l in range(5 * 2 * 6 - course_durations[j - 1] + 1):
+                        class_course_assignments[i, j, k, l] = model.NewBoolVar(f'class_course_assignments_{i}_{j}_{k}_{l}')
+    # Ràng buộc
+    # 1. Mỗi lớp-môn chỉ được phân công một lần và cho một giáo viên phù hợp
+    for i in range(N):
+        for j in class_courses[i]:
+            model.Add(sum(class_course_assignments.get((i, j, k, l), 0) for k in range(T) for l in range(5 * 2 * 6 - course_durations[j - 1] + 1)) <=1)
+
+    # 2. Các lớp-môn của cùng lớp thì không được xếp thời khóa biểu chồng lấp lên nhau
+    for i in range(N):
+        for j1 in class_courses[i]:
+            for j2 in class_courses[i]:
+                if j1 < j2:
+                    for k1 in range(T):
+                        for l1 in range(5 * 2 * 6 - course_durations[j1 - 1] + 1):
+                            for k2 in range(T):
+                                for l2 in range(5 * 2 * 6 - course_durations[j2 - 1] + 1):
+                                    if (k1 == k2):
+                                        if (l1 + course_durations[j1 - 1] > l2 and l2 + course_durations[j2 - 1] > l1) or (l1 == l2):
+                                            if (i, j1, k1, l1) in class_course_assignments and (i, j2, k2, l2) in class_course_assignments:
+                                                model.Add(class_course_assignments[i, j1, k1, l1] + class_course_assignments[i, j2, k2, l2] <= 1)
+
+    # 3. Các lớp-môn được phân công cho cùng giáo viên cũng không được xếp thời khóa biểu chồng lấp lên nhau
+    for k in range(T):
+        for i1 in range(N):
+            for j1 in class_courses[i1]:
+                if j1 in teacher_courses[k]:
+                    for l1 in range(5 * 2 * 6 - course_durations[j1 - 1] + 1):
+                        for i2 in range(N):
+                            if i1 != i2:
+                                for j2 in class_courses[i2]:
+                                    if j2 in teacher_courses[k]:
+                                        for l2 in range(5 * 2 * 6 - course_durations[j2 - 1] + 1):
+                                            if (l1 + course_durations[j1 - 1] > l2 and l2 + course_durations[j2 - 1] > l1) or (l1 == l2):
+                                                if (i1, j1, k, l1) in class_course_assignments and (i2, j2, k, l2) in class_course_assignments:
+                                                    model.Add(class_course_assignments[i1, j1, k, l1] + class_course_assignments[i2, j2, k, l2] <= 1)
+
+    # Constraint 4: Giáo viên dạy đúng môn của mình
+    for n in range(N):
+        for m in range(1,M+1):
+            for t in range(T):
+                for l in range(5*2*6 - course_durations[m-1] + 1):
+                    if m not in teacher_courses[t]:
+                        if (n,m,t,l) in class_course_assignments:
+                            model.Add(class_course_assignments[n, m, t, l] == 0)
+
+    # Constraint 5: Lớp chỉ học những môn cho phép
+    for n in range(N):
+        for m in range(1,M+1):
+            for t in range(T):
+              for l in range(5*2*6 - course_durations[m-1] + 1):
+                if m not in class_courses[n]:
+                    if (n,m,t,l) in class_course_assignments:
+                        model.Add(class_course_assignments[n, m, t, l] == 0)
+                        
+    # Mục tiêu: Tối đa hóa số lượng lớp-môn được phân công
+    model.Maximize(sum(class_course_assignments.get((i, j, k, l), 0) for i in range(N) for j in class_courses[i] for k in range(T) for l in range(5 * 2 * 6 - course_durations[j - 1] + 1)))
+
+    # Giải mô hình
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+
+    # In kết quả
+    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        assignments = []
+        for i in range(N):
+            for j in class_courses[i]:
+                for k in range(T):
+                    for l in range(5 * 2 * 6 - course_durations[j - 1] + 1):
+                        if solver.Value(class_course_assignments.get((i, j, k, l), 0)):
+                            assignments.append((i + 1, j, l + 1, k + 1))
+
+        print(len(assignments))
+        for assignment in assignments:
+            print(*assignment)
+    else:
+        return None
+
+# Chạy chương trình
+solve_class_course_teacher_assignment()
